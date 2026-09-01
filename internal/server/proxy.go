@@ -1,0 +1,146 @@
+package server
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+func setupProxyRoutes(mux *http.ServeMux) {
+	proxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("url")
+		if targetUrl == "" {
+			http.Error(w, "url parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		cookie := r.URL.Query().Get("cookie")
+		referer := r.URL.Query().Get("referer")
+		origin := r.URL.Query().Get("origin")
+		userAgent := r.URL.Query().Get("userAgent")
+
+		if origin == "" {
+			origin = "https://ee3.me"
+		}
+		if referer == "" {
+			referer = "https://ee3.me/"
+		}
+		if userAgent == "" {
+			userAgent = r.Header.Get("User-Agent")
+		}
+		if userAgent == "" {
+			userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+		}
+
+		req, err := http.NewRequest("GET", targetUrl, nil)
+		if err != nil {
+			log.Printf("Proxy error creating request for %s: %v", targetUrl, err)
+			http.Error(w, `{"success":false,"error":"Proxy fetch failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Referer", referer)
+		req.Header.Set("User-Agent", userAgent)
+		if cookie != "" {
+			req.Header.Set("Cookie", cookie)
+		}
+		if rangeHdr := r.Header.Get("Range"); rangeHdr != "" {
+			req.Header.Set("Range", rangeHdr)
+		}
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Proxy error fetching %s: %v", targetUrl, err)
+			http.Error(w, `{"success":false,"error":"Proxy fetch failed"}`, http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+		isM3U8 := strings.Contains(contentType, "mpegurl") || strings.Contains(contentType, "m3u8") || 
+			(strings.Contains(targetUrl, ".m3u8") && !strings.Contains(targetUrl, ".html") && !strings.Contains(targetUrl, ".ts"))
+
+		if isM3U8 {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				http.Error(w, "Failed to read m3u8 body", http.StatusInternalServerError)
+				return
+			}
+			playlist := string(bodyBytes)
+
+			parsedUrl, _ := url.Parse(targetUrl)
+			basePath := parsedUrl.Path[:strings.LastIndex(parsedUrl.Path, "/")+1]
+			baseUrlOrigin := parsedUrl.Scheme + "://" + parsedUrl.Host
+
+			var rewrittenLines []string
+			lines := strings.Split(playlist, "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "#") || line == "" {
+					rewrittenLines = append(rewrittenLines, line)
+					continue
+				}
+
+				segmentUrl := line
+				if !strings.HasPrefix(segmentUrl, "http") {
+					if strings.HasPrefix(segmentUrl, "/") {
+						segmentUrl = baseUrlOrigin + segmentUrl
+					} else {
+						segmentUrl = baseUrlOrigin + basePath + segmentUrl
+					}
+				}
+
+				proxyUrl := fmt.Sprintf("/api/proxy/stream.m3u8?url=%s", url.QueryEscape(segmentUrl))
+				if cookie != "" {
+					proxyUrl += fmt.Sprintf("&cookie=%s", url.QueryEscape(cookie))
+				}
+				if referer != "" {
+					proxyUrl += fmt.Sprintf("&referer=%s", url.QueryEscape(referer))
+				}
+				if origin != "" {
+					proxyUrl += fmt.Sprintf("&origin=%s", url.QueryEscape(origin))
+				}
+				rewrittenLines = append(rewrittenLines, proxyUrl)
+			}
+
+			rewrittenPlaylist := strings.Join(rewrittenLines, "\n")
+
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(rewrittenPlaylist)))
+			w.Header().Set("Cache-Control", "public, max-age=10")
+			w.WriteHeader(resp.StatusCode)
+			w.Write([]byte(rewrittenPlaylist))
+			return
+		}
+
+		for k, vv := range resp.Header {
+			kLower := strings.ToLower(k)
+			if kLower == "transfer-encoding" || kLower == "connection" || kLower == "access-control-allow-origin" {
+				continue
+			}
+			for _, v := range vv {
+				if kLower == "content-type" && strings.Contains(v, "force-download") {
+					w.Header().Set("Content-Type", "video/mp4")
+				} else {
+					w.Header().Add(k, v)
+				}
+			}
+		}
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		w.WriteHeader(resp.StatusCode)
+		
+		io.Copy(w, resp.Body)
+	})
+
+	mux.Handle("/api/proxy/stream", proxyHandler)
+	mux.Handle("/api/proxy/stream.mp4", proxyHandler)
+	mux.Handle("/api/proxy/stream.m3u8", proxyHandler)
+}
