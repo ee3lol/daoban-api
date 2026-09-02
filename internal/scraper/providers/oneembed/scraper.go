@@ -31,7 +31,7 @@ type Scraper struct {
 func NewScraper(apiBaseURL string) *Scraper {
 	return &Scraper{
 		client: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 		apiBaseURL: apiBaseURL,
 	}
