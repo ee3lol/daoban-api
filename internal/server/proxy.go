@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 func setupProxyRoutes(mux *http.ServeMux) {
@@ -14,6 +15,38 @@ func setupProxyRoutes(mux *http.ServeMux) {
 		targetUrl := r.URL.Query().Get("url")
 		if targetUrl == "" {
 			http.Error(w, "url parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		// HOTLINK & SCRAPER PROTECTION
+		// If the request comes from an origin/referer that isn't ours, trap it!
+		reqOrigin := r.Header.Get("Origin")
+		reqReferer := r.Header.Get("Referer")
+		
+		isHotlink := false
+		if reqOrigin != "" && !strings.Contains(reqOrigin, "daoban.lol") && !strings.Contains(reqOrigin, "localhost") {
+			isHotlink = true
+		}
+		if reqOrigin == "" && reqReferer != "" && !strings.Contains(reqReferer, "daoban.lol") && !strings.Contains(reqReferer, "localhost") {
+			isHotlink = true
+		}
+
+		if isHotlink {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.WriteHeader(http.StatusForbidden)
+			
+			// THE TAR PIT: Waste their time by holding the connection open
+			// We send one space character every 10 seconds for 5 minutes.
+			// This completely breaks their video player and ties up their proxy servers.
+			for i := 0; i < 30; i++ {
+				w.Write([]byte(" "))
+				if flusher, ok := w.(http.Flusher); ok {
+					flusher.Flush()
+				}
+				time.Sleep(10 * time.Second)
+			}
+			w.Write([]byte(`{"error": "bro just dm admins on discord for the src code its free lol"}`))
 			return
 		}
 
