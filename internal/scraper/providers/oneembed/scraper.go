@@ -207,13 +207,10 @@ func mapStatus(status string) string {
 
 func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int) ([]scraper.StreamSource, error) {
 	var sources []scraper.StreamSource
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	sourceChan := make(chan *scraper.StreamSource, len(SERVERS))
 
 	for _, server := range SERVERS {
-		wg.Add(1)
 		go func(srv ServerConfig) {
-			defer wg.Done()
 			var path string
 			if mediaType == "tv" {
 				path = fmt.Sprintf("%s/id=%s?s=%d&e=%d&type=tv&server=%s", srv.Endpoint, tmdbId, season, episode, url.QueryEscape(srv.ID))
@@ -225,23 +222,32 @@ func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int
 			err := s.authenticatedGet(path, &streamResp)
 			if err != nil {
 				log.Printf("1embed server %s failed: %v", srv.ID, err)
+				sourceChan <- nil
 				return
 			}
 
 			if !streamResp.Success {
+				sourceChan <- nil
 				return
 			}
 
-			source := s.parseStreamResponse(&streamResp, srv.Name)
-			if source != nil {
-				mu.Lock()
-				sources = append(sources, *source)
-				mu.Unlock()
-			}
+			sourceChan <- s.parseStreamResponse(&streamResp, srv.Name)
 		}(server)
 	}
 
-	wg.Wait()
+	timeout := time.After(8 * time.Second)
+	for i := 0; i < len(SERVERS); i++ {
+		select {
+		case src := <-sourceChan:
+			if src != nil {
+				sources = append(sources, *src)
+			}
+		case <-timeout:
+			log.Printf("GetStreamSources hit 8s timeout, returning %d sources found so far", len(sources))
+			return sources, nil
+		}
+	}
+
 	return sources, nil
 }
 
