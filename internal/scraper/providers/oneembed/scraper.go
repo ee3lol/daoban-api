@@ -31,7 +31,7 @@ type Scraper struct {
 func NewScraper(apiBaseURL string) *Scraper {
 	return &Scraper{
 		client: &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: 15 * time.Second,
 		},
 		apiBaseURL: apiBaseURL,
 	}
@@ -52,6 +52,7 @@ func (s *Scraper) getToken() (string, error) {
 	req.Header.Set("Referer", BaseURL+"/")
 	req.Header.Set("Origin", BaseURL)
 	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -113,6 +114,7 @@ func (s *Scraper) authenticatedGet(path string, target interface{}) error {
 	req.Header.Set("Referer", BaseURL+"/")
 	req.Header.Set("Origin", BaseURL)
 	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -205,32 +207,41 @@ func mapStatus(status string) string {
 
 func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int) ([]scraper.StreamSource, error) {
 	var sources []scraper.StreamSource
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
 	for _, server := range SERVERS {
-		var path string
-		if mediaType == "tv" {
-			path = fmt.Sprintf("%s/id=%s?s=%d&e=%d&type=tv&server=%s", server.Endpoint, tmdbId, season, episode, url.QueryEscape(server.ID))
-		} else {
-			path = fmt.Sprintf("%s/id=%s?type=movie&server=%s", server.Endpoint, tmdbId, url.QueryEscape(server.ID))
-		}
+		wg.Add(1)
+		go func(srv ServerConfig) {
+			defer wg.Done()
+			var path string
+			if mediaType == "tv" {
+				path = fmt.Sprintf("%s/id=%s?s=%d&e=%d&type=tv&server=%s", srv.Endpoint, tmdbId, season, episode, url.QueryEscape(srv.ID))
+			} else {
+				path = fmt.Sprintf("%s/id=%s?type=movie&server=%s", srv.Endpoint, tmdbId, url.QueryEscape(srv.ID))
+			}
 
-		var streamResp StreamResponse
-		err := s.authenticatedGet(path, &streamResp)
-		if err != nil {
-			log.Printf("1embed server %s failed: %v", server.ID, err)
-			continue
-		}
+			var streamResp StreamResponse
+			err := s.authenticatedGet(path, &streamResp)
+			if err != nil {
+				log.Printf("1embed server %s failed: %v", srv.ID, err)
+				return
+			}
 
-		if !streamResp.Success {
-			continue
-		}
+			if !streamResp.Success {
+				return
+			}
 
-		source := s.parseStreamResponse(&streamResp, server.Name)
-		if source != nil {
-			sources = append(sources, *source)
-		}
+			source := s.parseStreamResponse(&streamResp, srv.Name)
+			if source != nil {
+				mu.Lock()
+				sources = append(sources, *source)
+				mu.Unlock()
+			}
+		}(server)
 	}
 
+	wg.Wait()
 	return sources, nil
 }
 
