@@ -14,13 +14,13 @@ type AudioTrack struct {
 }
 
 type StreamsData struct {
-	RawM3U8       string `json:"raw_m3u8"`
-	ProxyM3U8     string `json:"proxy_m3u8"`
-	VPSProxyM3U8  string `json:"vps_proxy_m3u8"`
-	LocalProxyM3U8 string `json:"local_proxy_m3u8"`
+	RawM3U8         string `json:"raw_m3u8"`
+	ProxyM3U8       string `json:"proxy_m3u8"`
+	VPSProxyM3U8    string `json:"vps_proxy_m3u8"`
+	LocalProxyM3U8  string `json:"local_proxy_m3u8"`
 	WorkerProxyM3U8 string `json:"worker_proxy_m3u8"`
-	M3U8          string `json:"m3u8"`
-	Format        string `json:"format"`
+	M3U8            string `json:"m3u8"`
+	Format          string `json:"format"`
 }
 
 type StreamTitle struct {
@@ -121,8 +121,8 @@ type ServerConfig struct {
 }
 
 var SERVERS = []ServerConfig{
-	{ID: "NORE", Name: "Nore", Icon: "", Desc: "", Endpoint: "/api/sources/2"},
-	{ID: "GORE", Name: "Gore", Icon: "", Desc: "", Endpoint: "/api/sources/3"},
-	{ID: "ZORE", Name: "Zore [HD]", Icon: "", Desc: "", Endpoint: "/api/sources/1"},
-	{ID: "BORE", Name: "Bore [4K]", Icon: "", Desc: "", Endpoint: "/api/sources/4"},
+	{ID: "NORE", Name: "Bootleg", Icon: "", Desc: "", Endpoint: "/api/sources/2"},
+	{ID: "GORE", Name: "Siphon", Icon: "", Desc: "", Endpoint: "/api/sources/3"},
+	{ID: "ZORE", Name: "Corsair", Icon: "", Desc: "", Endpoint: "/api/sources/1"},
+	{ID: "BORE", Name: "Outlaw", Icon: "", Desc: "", Endpoint: "/api/sources/4"},
 }
