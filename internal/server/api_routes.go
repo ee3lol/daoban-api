@@ -28,6 +28,34 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
+		mediaType := r.URL.Query().Get("type")
+
+		if mediaType == "anime" {
+			details, err := scraperImpl.GetDetails("movie", tmdbId)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			details.Type = "movie"
+
+			animeSources, err := animeScraper.GetStreamSourcesForAnime(details.Title, 1, 1)
+			if err != nil || len(animeSources) == 0 {
+				log.Printf("[anidb] Failed to get anime movie sources or empty: %v", err)
+				// Fallback to oneembed
+				sources, _ := scraperImpl.GetStreamSources("movie", tmdbId, 1, 1)
+				animeSources = sources
+			}
+
+			resp := map[string]interface{}{
+				"success": true,
+				"media":   details,
+				"sources": animeSources,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
 		details, err := scraperImpl.GetDetails("movie", tmdbId)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -71,9 +99,11 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			details.Type = "tv"
 
 			animeSources, err := animeScraper.GetStreamSourcesForAnime(details.Title, season, episode)
-			if err != nil {
-				log.Printf("[anidb] Failed to get anime sources: %v", err)
-				animeSources = []scraper.StreamSource{}
+			if err != nil || len(animeSources) == 0 {
+				log.Printf("[anidb] Failed to get anime sources or empty: %v", err)
+				// Fallback to oneembed
+				sources, _ := scraperImpl.GetStreamSources("tv", tmdbId, season, episode)
+				animeSources = sources
 			}
 
 			resp := map[string]interface{}{
