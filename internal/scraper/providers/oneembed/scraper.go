@@ -234,7 +234,7 @@ func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int
 		}(server)
 	}
 
-	timeout := time.After(8 * time.Second)
+	timeout := time.After(15 * time.Second)
 	for i := 0; i < len(SERVERS); i++ {
 		select {
 		case src := <-sourceChan:
@@ -266,12 +266,44 @@ func (s *Scraper) parseStreamResponse(resp *StreamResponse, serverId string) *sc
 		return nil
 	}
 
+	origin := BaseURL
+	referer := BaseURL + "/"
+	userAgent := ""
+
+	if strings.Contains(m3u8Url, "proxy.lalis.lol") {
+		parsedProxy, err := url.Parse(m3u8Url)
+		if err == nil {
+			targetUrl := parsedProxy.Query().Get("url")
+			if targetUrl != "" {
+				m3u8Url = targetUrl
+			}
+			headersJSON := parsedProxy.Query().Get("headers")
+			if headersJSON != "" {
+				var headersMap map[string]string
+				if err := json.Unmarshal([]byte(headersJSON), &headersMap); err == nil {
+					if orig, ok := headersMap["Origin"]; ok && orig != "" {
+						origin = orig
+					}
+					if ref, ok := headersMap["Referer"]; ok && ref != "" {
+						referer = ref
+					}
+					if ua, ok := headersMap["User-Agent"]; ok && ua != "" {
+						userAgent = ua
+					}
+				}
+			}
+		}
+	}
+
 	proxiedUrl := fmt.Sprintf("%s/api/proxy/stream.m3u8?url=%s&referer=%s&origin=%s",
 		s.apiBaseURL,
 		url.QueryEscape(m3u8Url),
-		url.QueryEscape(BaseURL+"/"),
-		url.QueryEscape(BaseURL),
+		url.QueryEscape(referer),
+		url.QueryEscape(origin),
 	)
+	if userAgent != "" {
+		proxiedUrl += fmt.Sprintf("&userAgent=%s", url.QueryEscape(userAgent))
+	}
 
 	var subtitles []scraper.Subtitle
 	for _, sub := range resp.Subtitles {
