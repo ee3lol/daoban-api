@@ -11,6 +11,7 @@ import (
 	"ee3lol/daoban-api/internal/scraper"
 	"ee3lol/daoban-api/internal/scraper/providers/anidb"
 	"ee3lol/daoban-api/internal/scraper/providers/oneembed"
+	"ee3lol/daoban-api/internal/tmdb"
 )
 
 func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
@@ -31,7 +32,7 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 		mediaType := r.URL.Query().Get("type")
 
 		if mediaType == "anime" {
-			details, err := scraperImpl.GetDetails("movie", tmdbId)
+			details, err := tmdb.FetchDetails(cfg, "movie", tmdbId)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -56,7 +57,7 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
-		details, err := scraperImpl.GetDetails("movie", tmdbId)
+		details, err := tmdb.FetchDetails(cfg, "movie", tmdbId)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -91,7 +92,7 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 		
 		if mediaType == "anime" {
 			// Get TMDB details to pass title to anidb
-			details, err := scraperImpl.GetDetails("tv", tmdbId)
+			details, err := tmdb.FetchDetails(cfg, "tv", tmdbId)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -118,7 +119,7 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
-		details, err := scraperImpl.GetDetails("tv", tmdbId)
+		details, err := tmdb.FetchDetails(cfg, "tv", tmdbId)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
