@@ -2,17 +2,20 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"ee3lol/daoban-api/internal/config"
 	"ee3lol/daoban-api/internal/scraper"
+	"ee3lol/daoban-api/internal/scraper/providers/anidb"
 	"ee3lol/daoban-api/internal/scraper/providers/oneembed"
 )
 
 func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 	scraperImpl := oneembed.NewScraper(cfg.APIBaseURL)
+	animeScraper := anidb.NewScraper(cfg.APIBaseURL)
 	authMiddleware := APIKeyAuth(cfg.APIKey)
 
 	// Custom router for /api/ routes
@@ -25,7 +28,7 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
-		details, err := scraperImpl.GetDetails(tmdbId)
+		details, err := scraperImpl.GetDetails("movie", tmdbId)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -56,7 +59,36 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 		season, _ := strconv.Atoi(parts[1])
 		episode, _ := strconv.Atoi(parts[2])
 
-		details, err := scraperImpl.GetDetails(tmdbId)
+		mediaType := r.URL.Query().Get("type")
+		
+		if mediaType == "anime" {
+			// Get TMDB details to pass title to anidb
+			details, err := scraperImpl.GetDetails("tv", tmdbId)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			details.Type = "tv"
+
+			animeSources, err := animeScraper.GetStreamSourcesForAnime(details.Title, season, episode)
+			if err != nil {
+				log.Printf("[anidb] Failed to get anime sources: %v", err)
+				animeSources = []scraper.StreamSource{}
+			}
+
+			resp := map[string]interface{}{
+				"success": true,
+				"media":   details,
+				"season":  season,
+				"episode": episode,
+				"sources": animeSources,
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		details, err := scraperImpl.GetDetails("tv", tmdbId)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

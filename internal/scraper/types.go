@@ -38,7 +38,9 @@ type StreamSource struct {
 	URL        string            `json:"url"`
 	IsM3U8     bool              `json:"isM3U8"`
 	IsMP4      bool              `json:"isMP4"`
+	IsEmbed    bool              `json:"isEmbed"`
 	ServerName string            `json:"serverName"`
+	AudioType  string            `json:"audioType,omitempty"`
 	Headers    map[string]string `json:"headers,omitempty"`
 	Subtitles  []Subtitle        `json:"subtitles,omitempty"`
 }

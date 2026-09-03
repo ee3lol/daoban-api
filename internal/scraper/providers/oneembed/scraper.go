@@ -103,7 +103,7 @@ func (s *Scraper) authenticatedGet(path string, target interface{}) error {
 	if strings.Contains(path, "?") {
 		separator = "&"
 	}
-	
+
 	fullURL := fmt.Sprintf("%s%s%s_st=%s", BaseURL, path, separator, token)
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
@@ -134,14 +134,13 @@ func (s *Scraper) authenticatedGet(path string, target interface{}) error {
 	return json.Unmarshal(body, target)
 }
 
-func (s *Scraper) GetDetails(tmdbId string) (*scraper.MediaDetails, error) {
-	path := fmt.Sprintf("/api/tmdb/details?type=movie&id=%s", tmdbId)
+func (s *Scraper) GetDetails(mediaType, tmdbId string) (*scraper.MediaDetails, error) {
+	path := fmt.Sprintf("/api/tmdb/details?type=%s&id=%s", mediaType, tmdbId)
 	var tmdbResp TmdbDetailsResponse
 	if err := s.authenticatedGet(path, &tmdbResp); err != nil {
 		return nil, err
 	}
 
-	mediaType := "movie"
 	if tmdbResp.NumberOfSeasons > 0 {
 		mediaType = "tv"
 	}
