@@ -31,7 +31,7 @@ type Scraper struct {
 func NewScraper(apiBaseURL string) *Scraper {
 	return &Scraper{
 		client: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout: 30 * time.Second,
 		},
 		apiBaseURL: apiBaseURL,
 	}
@@ -234,7 +234,7 @@ func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int
 		}(server)
 	}
 
-	timeout := time.After(15 * time.Second)
+	timeout := time.After(25 * time.Second)
 	for i := 0; i < len(SERVERS); i++ {
 		select {
 		case src := <-sourceChan:
@@ -242,7 +242,7 @@ func (s *Scraper) GetStreamSources(mediaType, tmdbId string, season, episode int
 				sources = append(sources, *src)
 			}
 		case <-timeout:
-			log.Printf("GetStreamSources hit 8s timeout, returning %d sources found so far", len(sources))
+			log.Printf("GetStreamSources hit 25s timeout, returning %d sources found so far", len(sources))
 			return sources, nil
 		}
 	}
