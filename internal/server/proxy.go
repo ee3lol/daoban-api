@@ -114,31 +114,54 @@ func setupProxyRoutes(mux *http.ServeMux) {
 			lines := strings.Split(playlist, "\n")
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "#") || line == "" {
+				if line == "" {
 					rewrittenLines = append(rewrittenLines, line)
 					continue
 				}
 
-				segmentUrl := line
-				if !strings.HasPrefix(segmentUrl, "http") {
-					if strings.HasPrefix(segmentUrl, "/") {
-						segmentUrl = baseUrlOrigin + segmentUrl
-					} else {
-						segmentUrl = baseUrlOrigin + basePath + segmentUrl
+				buildProxyUrl := func(target string) string {
+					segmentUrl := target
+					if !strings.HasPrefix(segmentUrl, "http") {
+						if strings.HasPrefix(segmentUrl, "/") {
+							segmentUrl = baseUrlOrigin + segmentUrl
+						} else {
+							segmentUrl = baseUrlOrigin + basePath + segmentUrl
+						}
 					}
+
+					proxyUrl := fmt.Sprintf("/api/proxy/stream.m3u8?url=%s", url.QueryEscape(segmentUrl))
+					if cookie != "" {
+						proxyUrl += fmt.Sprintf("&cookie=%s", url.QueryEscape(cookie))
+					}
+					if referer != "" {
+						proxyUrl += fmt.Sprintf("&referer=%s", url.QueryEscape(referer))
+					}
+					if origin != "" {
+						proxyUrl += fmt.Sprintf("&origin=%s", url.QueryEscape(origin))
+					}
+					return proxyUrl
 				}
 
-				proxyUrl := fmt.Sprintf("/api/proxy/stream.m3u8?url=%s", url.QueryEscape(segmentUrl))
-				if cookie != "" {
-					proxyUrl += fmt.Sprintf("&cookie=%s", url.QueryEscape(cookie))
+				if strings.HasPrefix(line, "#") {
+					// We must rewrite URIs inside tags like #EXT-X-MEDIA and #EXT-X-MAP
+					if strings.Contains(line, `URI="`) {
+						parts := strings.Split(line, `URI="`)
+						if len(parts) == 2 {
+							beforeUri := parts[0]
+							afterUriStart := parts[1]
+							endQuoteIdx := strings.Index(afterUriStart, `"`)
+							if endQuoteIdx != -1 {
+								originalUri := afterUriStart[:endQuoteIdx]
+								afterUriEnd := afterUriStart[endQuoteIdx:]
+								line = beforeUri + `URI="` + buildProxyUrl(originalUri) + afterUriEnd
+							}
+						}
+					}
+					rewrittenLines = append(rewrittenLines, line)
+					continue
 				}
-				if referer != "" {
-					proxyUrl += fmt.Sprintf("&referer=%s", url.QueryEscape(referer))
-				}
-				if origin != "" {
-					proxyUrl += fmt.Sprintf("&origin=%s", url.QueryEscape(origin))
-				}
-				rewrittenLines = append(rewrittenLines, proxyUrl)
+
+				rewrittenLines = append(rewrittenLines, buildProxyUrl(line))
 			}
 
 			rewrittenPlaylist := strings.Join(rewrittenLines, "\n")
