@@ -11,12 +11,14 @@ import (
 	"ee3lol/daoban-api/internal/scraper"
 	"ee3lol/daoban-api/internal/scraper/providers/anidb"
 	"ee3lol/daoban-api/internal/scraper/providers/oneembed"
+	"ee3lol/daoban-api/internal/scraper/providers/vidking"
 	"ee3lol/daoban-api/internal/tmdb"
 )
 
 func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 	scraperImpl := oneembed.NewScraper(cfg.APIBaseURL)
 	animeScraper := anidb.NewScraper(cfg.APIBaseURL)
+	vidkingScraper := vidking.NewScraper(cfg.APIBaseURL)
 	authMiddleware := APIKeyAuth(cfg.APIKey)
 
 	// Custom router for /api/ routes
@@ -39,12 +41,31 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			}
 			details.Type = "movie"
 
-			animeSources, err := animeScraper.GetStreamSourcesForAnime(details.Title, 1, 1)
-			if err != nil || len(animeSources) == 0 {
-				log.Printf("[anidb] Failed to get anime movie sources or empty: %v", err)
-				// Fallback to oneembed
-				sources, _ := scraperImpl.GetStreamSources("movie", tmdbId, 1, 1)
-				animeSources = sources
+			animeSources := []scraper.StreamSource{}
+			
+			if cfg.EnableAniDB {
+				anidbSrc, err := animeScraper.GetStreamSourcesForAnime(details.Title, 1, 1)
+				if err == nil && len(anidbSrc) > 0 {
+					animeSources = append(animeSources, anidbSrc...)
+				} else {
+					log.Printf("[anidb] Failed to get anime movie sources or empty: %v", err)
+				}
+			}
+
+			if cfg.EnableOneEmbed {
+				oeSrc, err := scraperImpl.GetStreamSources("movie", tmdbId, 1, 1)
+				if err == nil {
+					animeSources = append(animeSources, oeSrc...)
+				}
+			}
+
+			if cfg.EnableVidking {
+				vkSrc, err := vidkingScraper.GetStreamSources(details.Title, "movie", strconv.Itoa(details.ReleaseYear), tmdbId, tmdbId, 1, 1) // Using tmdbId as fallback for imdbId since we don't have imdbId readily available in details here
+				if err == nil {
+					animeSources = append(animeSources, vkSrc...)
+				} else {
+					log.Printf("[vidking] Failed to get movie sources: %v", err)
+				}
 			}
 
 			resp := map[string]interface{}{
@@ -63,9 +84,22 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
-		sources, err := scraperImpl.GetStreamSources("movie", tmdbId, 1, 1)
-		if err != nil {
-			sources = []scraper.StreamSource{}
+		sources := []scraper.StreamSource{}
+		
+		if cfg.EnableOneEmbed {
+			oeSrc, err := scraperImpl.GetStreamSources("movie", tmdbId, 1, 1)
+			if err == nil {
+				sources = append(sources, oeSrc...)
+			}
+		}
+
+		if cfg.EnableVidking {
+			vkSrc, err := vidkingScraper.GetStreamSources(details.Title, "movie", strconv.Itoa(details.ReleaseYear), tmdbId, tmdbId, 1, 1) // Using tmdbId as imdbId fallback
+			if err == nil {
+				sources = append(sources, vkSrc...)
+			} else {
+				log.Printf("[vidking] Failed to get movie sources: %v", err)
+			}
 		}
 
 		resp := map[string]interface{}{
@@ -99,12 +133,31 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			}
 			details.Type = "tv"
 
-			animeSources, err := animeScraper.GetStreamSourcesForAnime(details.Title, season, episode)
-			if err != nil || len(animeSources) == 0 {
-				log.Printf("[anidb] Failed to get anime sources or empty: %v", err)
-				// Fallback to oneembed
-				sources, _ := scraperImpl.GetStreamSources("tv", tmdbId, season, episode)
-				animeSources = sources
+			animeSources := []scraper.StreamSource{}
+
+			if cfg.EnableAniDB {
+				anidbSrc, err := animeScraper.GetStreamSourcesForAnime(details.Title, season, episode)
+				if err == nil && len(anidbSrc) > 0 {
+					animeSources = append(animeSources, anidbSrc...)
+				} else {
+					log.Printf("[anidb] Failed to get anime sources or empty: %v", err)
+				}
+			}
+
+			if cfg.EnableOneEmbed {
+				oeSrc, err := scraperImpl.GetStreamSources("tv", tmdbId, season, episode)
+				if err == nil {
+					animeSources = append(animeSources, oeSrc...)
+				}
+			}
+
+			if cfg.EnableVidking {
+				vkSrc, err := vidkingScraper.GetStreamSources(details.Title, "tv", strconv.Itoa(details.ReleaseYear), tmdbId, tmdbId, season, episode)
+				if err == nil {
+					animeSources = append(animeSources, vkSrc...)
+				} else {
+					log.Printf("[vidking] Failed to get tv sources: %v", err)
+				}
 			}
 
 			resp := map[string]interface{}{
@@ -125,9 +178,22 @@ func setupAPIRoutes(mux *http.ServeMux, cfg *config.Config) {
 			return
 		}
 
-		sources, err := scraperImpl.GetStreamSources("tv", tmdbId, season, episode)
-		if err != nil {
-			sources = []scraper.StreamSource{}
+		sources := []scraper.StreamSource{}
+
+		if cfg.EnableOneEmbed {
+			oeSrc, err := scraperImpl.GetStreamSources("tv", tmdbId, season, episode)
+			if err == nil {
+				sources = append(sources, oeSrc...)
+			}
+		}
+
+		if cfg.EnableVidking {
+			vkSrc, err := vidkingScraper.GetStreamSources(details.Title, "tv", strconv.Itoa(details.ReleaseYear), tmdbId, tmdbId, season, episode)
+			if err == nil {
+				sources = append(sources, vkSrc...)
+			} else {
+				log.Printf("[vidking] Failed to get tv sources: %v", err)
+			}
 		}
 
 		resp := map[string]interface{}{

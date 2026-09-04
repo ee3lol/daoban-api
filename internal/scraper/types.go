@@ -41,6 +41,7 @@ type StreamSource struct {
 	IsEmbed    bool              `json:"isEmbed"`
 	ServerName string            `json:"serverName"`
 	AudioType  string            `json:"audioType,omitempty"`
+	AudioTracks []string         `json:"audioTracks,omitempty"`
 	Headers    map[string]string `json:"headers,omitempty"`
 	Subtitles  []Subtitle        `json:"subtitles,omitempty"`
 }

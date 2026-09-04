@@ -13,6 +13,9 @@ type Config struct {
 	Env            string
 	APIKey         string
 	APIBaseURL     string
+	EnableOneEmbed bool
+	EnableAniDB    bool
+	EnableVidking  bool
 }
 
 func Load() *Config {
@@ -42,11 +45,22 @@ func Load() *Config {
 		apiBaseURL = "http://localhost:" + port
 	}
 
+	getBoolEnv := func(key string, defaultVal bool) bool {
+		val := os.Getenv(key)
+		if val == "" {
+			return defaultVal
+		}
+		return val == "true" || val == "1"
+	}
+
 	return &Config{
 		Port:           port,
 		TMDBToken:      tmdbToken,
 		Env:            env,
 		APIKey:         apiKey,
 		APIBaseURL:     apiBaseURL,
+		EnableOneEmbed: getBoolEnv("ENABLE_ONEEMBED", true),
+		EnableAniDB:    getBoolEnv("ENABLE_ANIDB", true),
+		EnableVidking:  getBoolEnv("ENABLE_VIDKING", true),
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -54,6 +55,7 @@ func setupProxyRoutes(mux *http.ServeMux) {
 		referer := r.URL.Query().Get("referer")
 		origin := r.URL.Query().Get("origin")
 		userAgent := r.URL.Query().Get("userAgent")
+		audioTrack := r.URL.Query().Get("audioTrack")
 
 		if origin == "" {
 			origin = "https://ee3.me"
@@ -66,6 +68,13 @@ func setupProxyRoutes(mux *http.ServeMux) {
 		}
 		if userAgent == "" {
 			userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+		}
+		
+		// If audioTrack is specified, rewrite the target URL to point to that track
+		if audioTrack != "" && audioTrack != "1" {
+			targetUrl = strings.Replace(targetUrl, "-a1.m3u8", fmt.Sprintf("-a%s.m3u8", audioTrack), 1)
+			targetUrl = strings.Replace(targetUrl, "-a1.mp4", fmt.Sprintf("-a%s.mp4", audioTrack), 1)
+			targetUrl = strings.Replace(targetUrl, "-a1.m4s", fmt.Sprintf("-a%s.m4s", audioTrack), 1)
 		}
 
 		req, err := http.NewRequest("GET", targetUrl, nil)
@@ -139,6 +148,9 @@ func setupProxyRoutes(mux *http.ServeMux) {
 					if origin != "" {
 						proxyUrl += fmt.Sprintf("&origin=%s", url.QueryEscape(origin))
 					}
+					if audioTrack != "" {
+						proxyUrl += fmt.Sprintf("&audioTrack=%s", url.QueryEscape(audioTrack))
+					}
 					return proxyUrl
 				}
 
@@ -196,7 +208,49 @@ func setupProxyRoutes(mux *http.ServeMux) {
 		io.Copy(w, resp.Body)
 	})
 
+	subtitleProxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("url")
+		if targetUrl == "" {
+			http.Error(w, "url parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		req, err := http.NewRequest("GET", targetUrl, nil)
+		if err != nil {
+			http.Error(w, `{"error":"Proxy fetch failed"}`, http.StatusInternalServerError)
+			return
+		}
+
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			http.Error(w, `{"error":"Proxy fetch failed"}`, http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			http.Error(w, "Failed to read subtitle body", http.StatusInternalServerError)
+			return
+		}
+
+		srtContent := string(bodyBytes)
+		
+		// Very basic SRT to VTT conversion
+		vttContent := "WEBVTT\n\n" + srtContent
+		// Replace commas with dots in timestamps: 00:02:17,440 --> 00:02:17.440
+		re := regexp.MustCompile(`(\d{2}:\d{2}:\d{2}),(\d{3})`)
+		vttContent = re.ReplaceAllString(vttContent, "$1.$2")
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "text/vtt")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(vttContent))
+	})
+
 	mux.Handle("/api/proxy/stream", proxyHandler)
 	mux.Handle("/api/proxy/stream.mp4", proxyHandler)
 	mux.Handle("/api/proxy/stream.m3u8", proxyHandler)
+	mux.Handle("/api/proxy/subtitle", subtitleProxyHandler)
 }
